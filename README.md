@@ -1,8 +1,13 @@
----
-title: "Final Report: Dumb Laws vs. Fake Laws"
-author: "Aziz Al Mezraani"
-output: github_document
----
+
+# Final Report: Dumb Laws vs. Fake Laws
+
+**Author:** Aziz Al Mezraani
+
+### Quick Overview of Repository
+This is a repository representing all the assignments done for the Unstructured Data Analytics Course. There are 2 homeworks and a challenge that cover data cleaning, scraping and analysis.
+The following is my final project in which a streamlit game was created. I did leave out some parts of the code due to the fact it uses a paid key. Click the link below for the final product and to read the final report takinmg you through the process continue reading.
+
+[Click here to try the Dumb Laws vs. Fake Laws app](https://udanotes-eypcftwghbt7e825qp9uqz.streamlit.app/)
 
 ## Introduction
 
