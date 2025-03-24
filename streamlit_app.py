@@ -5,7 +5,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 
-df_final = pd.read_csv("C:\\Users\\azizm\\Documents\\Uni\\Spring 2025\\UDA\\data\\all_laws.csv")
+df_final = pd.read_csv("all_laws.csv")
 
 # Google Form & Sheet URLs (for QR Code Implementation for Presentation)
 FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdB7exmWrMhwhjufAwubY4HRTad4HSjG55tTLZJoCwCyVz4ng/viewform"
