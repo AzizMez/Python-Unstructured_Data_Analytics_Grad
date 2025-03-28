@@ -8,6 +8,7 @@ This is a repository representing all the assignments done for the Unstructured 
 The following is my final project in which a streamlit game was created. I did leave out some parts of the code due to the fact it uses a paid key. Click the link below for the final product and to read the final report takinmg you through the process continue reading.
 
 [Click here to try the Dumb Laws vs. Fake Laws app](https://udanotes-eypcftwghbt7e825qp9uqz.streamlit.app/)
+Note: If the app has been idle, it may take a 5-30 seconds to start up after clicking the link and waking up the app.
 
 ## Introduction
 
