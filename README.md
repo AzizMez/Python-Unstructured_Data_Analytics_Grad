@@ -28,18 +28,19 @@ pdf each law id preceded by a bullet point so that is how I will split it.
 
 ```{python}
 #| eval: false
-import pandas as pd
-from pypdf import PdfReader
-import re
-# PDF to DF conversion
+# Load a multi-page PDF file that contains unusual U.S. laws for parsing
 reader = PdfReader('C:\\Users\\azizm\\Downloads\\Strange-State-Laws.pdf')
 
 print(len(reader.pages))
 
+# Extract text content from the first page and clean it by removing newlines
 page = reader.pages[0]
 text = page.extract_text().replace('\n', ' ')
+
+# Split the text into separate bullet points, each representing a law
 bullet_points = text.split('\u2022')
 
+# Iterate through each page and repeat the process
 all_bullet_points = []
 for i in range(len(reader.pages)):
     page = reader.pages[i]
@@ -47,12 +48,13 @@ for i in range(len(reader.pages)):
     bullet_points = text.split('\u2022')
     all_bullet_points.extend(bullet_points)
 
+# Save all the bullet points to a text file for reference
 with open('C:\\Users\\azizm\\Downloads\\Strange-State-Laws.txt', 'w', encoding='utf-8') as f:
     for point in all_bullet_points:
         f.write(point + '\n')
 
+# Convert the list of bullet points into a pandas DataFrame
 df = pd.DataFrame(all_bullet_points, columns=['Laws'])
-
 ```
 
 ## Data Cleaning
@@ -63,7 +65,7 @@ will hopefully maximize the effectiveness of the gpt generation of the fake Laws
 
 ```{python}
 #| eval: false
-## Creating State Column
+# Define a list of U.S. states used to identify and tag entries
 states = ["Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida",
 "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland",
 "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire",
@@ -71,50 +73,53 @@ states = ["Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", 
 "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia",
 "Washington", "West Virginia", "Wisconsin", "Wyoming"]
 
+# Helper function to extract a state if the line ends with "StateName:"
 def extract_state(text):
     for state in states:
         if text.strip().endswith(state + ":"):
             return state
     return None
 
-
+# Identify rows that likely contain state headers and mark them
 df["state_marker"] = df["Laws"].apply(extract_state)
 
+# Fill each law row with the last seen state header value
 df["state"] = df["state_marker"].shift(1).ffill()
 
+# Remove the temporary helper column
 df.drop(columns=["state_marker"], inplace=True)
 
-## Removing Unnecessary Rows
-
+# Filter out rows with irrelevant text (e.g., copyright messages)
 df_filtered = df[~df["Laws"].str.contains(r"\b(Copyright|text)\b", case=False, na=False)]
 
-
-## Creating City Column
+# Function to extract city names based on a pattern like "City: Law text"
 def extract_city(text):
     match = re.match(r"^([\w\s]+):\s*(.*)", text)
     if match:
         city_candidate = match.group(1).strip()
-        if len(city_candidate.split()) <= 4:  # Ensure city name is at most 4 words
-            return city_candidate, match.group(2)  # Extract city name and remaining text
-    return None, text  # If no match or more than 4 words, return None for city
+        if len(city_candidate.split()) <= 4:  # Allow city names up to 4 words
+            return city_candidate, match.group(2)  # Return city and remaining law text
+    return None, text  # No match; return original text
 
+# Iterate over each law and extract the city and clean the law text
 cities = []
 cleaned_texts = []
-
 for text in df_filtered["Laws"]:
     city, cleaned_text = extract_city(text)
     cities.append(city)
     cleaned_texts.append(cleaned_text)
 
+# Assign extracted values back to the dataframe
 df_filtered["City"] = cities
 df_filtered["Laws"] = cleaned_texts
 df_filtered["City"] = df_filtered["City"].str.strip()
 
-# Cleaning Law Columns
-df_filtered["Laws"] = df_filtered["Laws"].str.split(r"\s{4,}").str[0]
+# Further clean and standardize the "Laws" column
+df_filtered["Laws"] = df_filtered["Laws"].str.split(r"\s{4,}").str[0]  # Remove overly long spacing
 df_filtered["Laws"] = df_filtered["Laws"].str.strip()
-df_filtered["Laws"] = df_filtered["Laws"].str.replace(r"\s+", " ", regex=True).str.strip()
+df_filtered["Laws"] = df_filtered["Laws"].str.replace(r"\s+", " ", regex=True).str.strip()  # Normalize whitespace
 
+# Display the cleaned dataframe (optional for debugging or inspection)
 print(df_filtered.to_string(index=False))
 
 ```
@@ -129,7 +134,7 @@ this project and I am not trying to spend more. However it is a close enough spl
 laws during my presentation.
 
 ```{python}
-#| eval: false
+# Import necessary components from the Haystack framework
 from haystack import Pipeline
 from haystack.components.converters.csv import CSVToDocument
 from haystack.document_stores.in_memory import InMemoryDocumentStore
@@ -139,22 +144,34 @@ from haystack.components.generators import OpenAIGenerator
 from haystack.components.retrievers.in_memory import InMemoryEmbeddingRetriever
 from haystack.utils import Secret
 
+# Load the cleaned real laws into a DataFrame
 df_real = pd.read_csv("C:\\Users\\azizm\\Documents\\Uni\\Spring 2025\\UDA\\Dumb_Laws.csv")
-df_real["Type"] = "Real"
+df_real["Type"] = "Real"  # Label all as real
+
+# Number of fake laws to generate
 num_laws = 11
+
+# Convert CSV laws to Haystack documents for downstream pipeline use
 converter = CSVToDocument()
 results = converter.run(sources=["C:\\Users\\azizm\\Documents\\Uni\\Spring 2025\\UDA\\Dumb_Laws.csv"])
 documents = results["documents"]
 
+# Create a temporary in-memory document store for processing
 document_store = InMemoryDocumentStore()
+
+# Load and warm up the sentence transformer embedder
 doc_embedder = SentenceTransformersDocumentEmbedder(model="sentence-transformers/all-MiniLM-L6-v2")
 doc_embedder.warm_up()
+
+# Generate embeddings for the real laws and store them
 docs_with_embeddings = doc_embedder.run(documents)
 document_store.write_documents(docs_with_embeddings["documents"])
 
+# Create components for similarity-based retrieval
 text_embedder = SentenceTransformersTextEmbedder(model="sentence-transformers/all-MiniLM-L6-v2")
 retriever = InMemoryEmbeddingRetriever(document_store)
 
+# Define the prompt template used to generate fake laws
 template = """
 Given the following information, answer the question.
 
@@ -165,44 +182,49 @@ Context:
     Task: {{task}}
     Answer:
 """
-# template = """
-# Given the following laws, generate a similar but fake law. Ensure that each fake law is unique, varies in location, and is believable within the context of unusual U.S. laws.
-#
-# Context:
-# {% for document in documents %}
-#     - State: {{ document.meta['State'] }}
-#     - City: {{ document.meta['City'] if document.meta['City'] != 'NA' else 'N/A' }}
-#     - Law: {{ document.content }}
-# {% endfor %}
-#
-# Generate a unique fake strange law for a different U.S. state.
-# Answer:
-# """
 
+# Initialize the prompt builder using the custom template
 prompt_builder = PromptBuilder(template=template)
+
+# Set up the GPT generator component with your API key (removed here)
 key = ''
-generator = OpenAIGenerator(api_key=Secret.from_token(key),
-  model="gpt-4o",
-  generation_kwargs={"temperature": 0.7, "max_tokens": 1000, "n": num_laws}
+generator = OpenAIGenerator(
+    api_key=Secret.from_token(key),
+    model="gpt-4o",
+    generation_kwargs={"temperature": 0.7, "max_tokens": 1000, "n": num_laws}
 )
 
+# Assemble the basic retrieval-augmented generation (RAG) pipeline
 basic_rag_pipeline = Pipeline()
 basic_rag_pipeline.add_component("text_embedder", text_embedder)
 basic_rag_pipeline.add_component("retriever", retriever)
 basic_rag_pipeline.add_component("prompt_builder", prompt_builder)
 basic_rag_pipeline.add_component("llm", generator)
 
+# Connect components in the proper order
 basic_rag_pipeline.connect("text_embedder.embedding", "retriever.query_embedding")
 basic_rag_pipeline.connect("retriever", "prompt_builder.documents")
 basic_rag_pipeline.connect("prompt_builder", "llm")
 
+# Define the task to feed into the prompt (what we ask GPT to do)
 task = "Generate and plainly state unique fake strange laws for different U.S. states based on the real laws given"
 
-response = basic_rag_pipeline.run({"text_embedder": {"text": task},
-                                   "prompt_builder": {"task": task}})
+# Run the full pipeline with the provided task
+response = basic_rag_pipeline.run({
+    "text_embedder": {"text": task},
+    "prompt_builder": {"task": task}
+})
 
+# Extract and format the generated replies into a DataFrame
 fake_laws = response["llm"]["replies"]
-df_fake_laws = pd.DataFrame({"State": "N/A", "City": "N/A", "Law": fake_laws, "Type": "Fake"})
+df_fake_laws = pd.DataFrame({
+    "State": "N/A",
+    "City": "N/A",
+    "Law": fake_laws,
+    "Type": "Fake"
+})
+
+# Save the fake laws to a CSV for further cleaning and merging
 df_fake_laws.to_csv("C:\\Users\\azizm\\Documents\\Uni\\Spring 2025\\UDA\\fake_laws.csv", index=False)
 ```
 
@@ -214,22 +236,42 @@ the minigame.
 
 ```{python}
 #| eval: false
+# Load the previously generated fake laws
 df_fake = pd.read_csv("C:\\Users\\azizm\\Documents\\Uni\\Spring 2025\\UDA\\fake_laws.csv")
-df_fake["Law"] = df_fake["Law"].str.split(r"\.")  # Split at every period
-df_fake = df_fake.explode("Law").reset_index(drop=True)  # Explode into new rows
+
+# Split fake laws at every period to break them into individual sentences
+df_fake["Law"] = df_fake["Law"].str.split(r"\.")
+
+# Expand each list into its own row so each sentence becomes its own record
+df_fake = df_fake.explode("Law").reset_index(drop=True)
+
+# Filter out overly short lines that are likely noise or incomplete sentences
 df_fake = df_fake[df_fake["Law"].str.len() >= 10].reset_index(drop=True)
-df_fake["State"] = df_fake["Law"].str.extract(r"^(.*?):")  # Extract text before :
-df_fake["Law"] = df_fake["Law"].str.replace(r"^.*?:", "", regex=True)  # Extract text before :
+
+# Extract state names from the beginning of each fake law, if present
+df_fake["State"] = df_fake["Law"].str.extract(r"^(.*?):")
+
+# Remove the state name prefix from the law text to clean it
+df_fake["Law"] = df_fake["Law"].str.replace(r"^.*?:", "", regex=True)
+
+# Clean up unwanted characters and whitespace in all relevant columns
 df_fake["State"] = df_fake["State"].str.replace(r"\*", "", regex=True).str.strip()
 df_fake["Law"] = df_fake["Law"].str.replace(r"\*", "", regex=True).str.strip()
 df_fake["Law"] = df_fake["Law"].str.replace(r"\s+", " ", regex=True).str.strip()
 df_fake["State"] = df_fake["State"].str.replace(r"\s+", " ", regex=True).str.strip()
 df_fake["Law"] = df_fake["Law"].str.replace(r"\s+", " ", regex=True).str.strip()
 df_fake["Type"] = df_fake["Type"].str.replace(r"\s+", " ", regex=True).str.strip()
+
+# Remove the unnamed index column from the real laws dataframe (if exists)
 df_real = df_real.drop(df_real.columns[0], axis=1)
-df_real.info()
-df_final = pd.concat([df_real.rename(columns={"Laws": "Law"}), df_fake.rename(columns={"State": "state"})],
-                      ignore_index=True)
+
+# Rename columns for consistency and merge real and fake laws into a unified DataFrame
+df_final = pd.concat([
+    df_real.rename(columns={"Laws": "Law"}),
+    df_fake.rename(columns={"State": "state"})
+], ignore_index=True)
+
+# Display the merged dataframe (optional, for verification)
 print(df_final)
 
 ```
@@ -243,11 +285,8 @@ stop. It will be created using streamlit.
 ```{python}
 
 # # Streamlit game
+# Import required libraries
 import streamlit as st
-
-df_final = pd.read_csv("final_laws_dataset.csv") 
-df_game = df_final
-
 import qrcode
 import pandas as pd
 import requests
@@ -255,12 +294,11 @@ from PIL import Image
 from io import BytesIO
 import time
 
-# Google Form & Sheet URLs (for QR Code Implementation for Presentation)
-FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdB7exmWrMhwhjufAwubY4HRTad4HSjG55tTLZJoCwCyVz4ng/viewform"
-SHEET_URL = "https://docs.google.com/spreadsheets/d/11NEGdpRFubObmm66fraGt74AtVpI4g4YI3LadBVHgN4/gviz/tq?tqx=out:csv"
-
+# Load the final, combined dataset and shuffle it for random game flow
+df_final = pd.read_csv("final_laws_dataset.csv") 
 df_game = df_final.sample(frac=1).reset_index(drop=True)
 
+# Initialize session state variables if not already set
 if "score" not in st.session_state:
     st.session_state.score = 0
 if "current_index" not in st.session_state:
@@ -268,21 +306,22 @@ if "current_index" not in st.session_state:
 if "reveal_location" not in st.session_state:
     st.session_state.reveal_location = False
 
+# Display game title and subtitle
 st.title("Dumb Law or Fake Dumb Law?")
 st.subheader("Can you guess if the law is real or fake?")
 
+# Track the current law based on game progress
 if "current_law" not in st.session_state:
     st.session_state.current_law = df_game.iloc[st.session_state.current_index]
 
+# Extract the current law
 current_law = st.session_state.current_law
-
 st.write(f"**Law:** {current_law['Law']}")
 
-
-#Including Scoring System and Live Results of Voting
+# Split layout into three columns for buttons and results
 col1, col2, col3 = st.columns([1, 1, 2])
 
-# Voting Buttons
+# "Real" button logic
 with col1:
     if st.button("Real"):
         if not st.session_state.reveal_location:
@@ -293,6 +332,7 @@ with col1:
             else:
                 st.error("Wrong! This law is fake.")
 
+# "Fake" button logic
 with col2:
     if st.button("Fake"):
         if not st.session_state.reveal_location:
@@ -303,10 +343,11 @@ with col2:
             else:
                 st.error("Wrong! This law is real.")
 
-# Live Results
+# Display live voting results from Google Sheets (if public)
 with col3:
     st.subheader("Live Results")
 
+    # Fetch current voting results from shared Google Sheet
     def fetch_votes():
         try:
             df_votes = pd.read_csv(SHEET_URL)
@@ -316,32 +357,33 @@ with col3:
         except Exception:
             return None, None
 
+    # Show vote counts on button click
     if st.button("Update Live Results"):
         real_votes, fake_votes = fetch_votes()
-
         if real_votes is not None and fake_votes is not None:
             st.write(f"**Real Votes:** {real_votes}")
             st.write(f"**Fake Votes:** {fake_votes}")
         else:
             st.error("Failed to fetch voting results. Make sure the sheet is public.")
 
-# Show location after if Law is Real
+# If user guessed, show location info for real laws
 if st.session_state.reveal_location:
     if current_law["Type"] == "Real":
         city = current_law["City"] if pd.notna(current_law["City"]) and current_law["City"].strip() else None
         location_display = f"{city}, {current_law['state']}" if city else current_law["state"]
         st.write(f"**Location:** {location_display}")
 
+    # Button to proceed to next law
     if st.button("Next Law"):
         st.session_state.current_index += 1
-        st.session_state.current_law = df_game.iloc[st.session_state.current_index]  # Load new law
+        st.session_state.current_law = df_game.iloc[st.session_state.current_index]
         st.session_state.reveal_location = False
         st.rerun()
 
-
+# Show score throughout the game
 st.write(f"**Score:** {st.session_state.score}")
 
-
+# Reset game when all laws are exhausted
 if st.session_state.current_index >= len(df_game):
     st.write("Game Over!")
     if st.button("Play Again"):
@@ -363,14 +405,25 @@ code into the streamlit code. The rest of it is below.
 
 ```{python}
 # QR Code
+# Show QR code in Streamlit interface for audience to vote live
+
+# Subheader to introduce the voting option
 st.subheader("Scan the QR Code to Vote")
+
+# Generate a QR code image from the Google Form URL
 qr = qrcode.make(FORM_URL)
 
-# Making it fit on the same page (no scrolling)
+# Create a byte stream to hold the QR image for display
 qr_bytes = BytesIO()
+
+# Resize the QR code so it fits nicely in the Streamlit layout
 qr.thumbnail((150, 150))
+
+# Save QR code to the byte stream in PNG format
 qr.save(qr_bytes, format="PNG")
 qr_bytes.seek(0)
+
+# Display the QR code in the app with a caption
 st.image(qr_bytes, caption="Scan to Vote!", width=150)
 ```
 
